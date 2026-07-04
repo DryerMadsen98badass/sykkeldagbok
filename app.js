@@ -26,6 +26,10 @@ const starterFoods = [
   ["Peanøttsmør", 588, 20, 25, 50, 1.2],
   ["Olivenolje", 884, 0, 0, 100, 0],
   ["Sportsdrikk", 32, 8, 0, 0, 0.25],
+  ["Vann", 0, 0, 0, 0, 0],
+  ["Fanta", 48, 12, 0, 0, 0.01],
+  ["Cola", 42, 10.6, 0, 0, 0.01],
+  ["Juice", 45, 10, 0.5, 0.1, 0.01],
   ["Energigel", 280, 70, 0, 0, 0.2],
   ["Energibar", 390, 60, 8, 10, 0.4],
 ].map(([name, kcal, carbs, protein, fat, salt]) => ({
@@ -54,6 +58,8 @@ const defaultState = {
 let state = loadState();
 let activeBlockType = "feeling";
 let deferredInstallPrompt = null;
+let mealDraft = [];
+let fluidDraft = [];
 
 const blockDefinitions = {
   feeling: {
@@ -114,10 +120,16 @@ function loadState() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return structuredClone(defaultState);
     const parsed = JSON.parse(raw);
+    const foods = parsed.foods?.length ? parsed.foods : [];
+    const knownFoods = new Set(foods.map((food) => food.name.toLowerCase()));
+    const mergedFoods = [
+      ...foods,
+      ...starterFoods.filter((food) => !knownFoods.has(food.name.toLowerCase())),
+    ];
     return {
       ...structuredClone(defaultState),
       ...parsed,
-      foods: parsed.foods?.length ? parsed.foods : starterFoods,
+      foods: mergedFoods,
     };
   } catch {
     return structuredClone(defaultState);
@@ -164,14 +176,19 @@ function fieldHtml([name, label, type, min, max]) {
 }
 
 function renderBlockForm() {
-  const definition = blockDefinitions[activeBlockType];
-  document.querySelector("#blockTitle").textContent = definition.title;
-  document.querySelector("#blockHint").textContent = definition.hint;
-
   if (activeBlockType === "meal") {
     renderMealForm();
     return;
   }
+
+  if (activeBlockType === "fluid") {
+    renderFluidForm();
+    return;
+  }
+
+  const definition = blockDefinitions[activeBlockType];
+  document.querySelector("#blockTitle").textContent = definition.title;
+  document.querySelector("#blockHint").textContent = definition.hint;
 
   document.querySelector("#blockFields").innerHTML = definition.fields.map(fieldHtml).join("");
 }
@@ -206,8 +223,6 @@ function renderMealForm() {
   document.querySelector("#addMealFoodButton").addEventListener("click", addFoodToMealDraft);
 }
 
-let mealDraft = [];
-
 function addFoodToMealDraft() {
   const name = document.querySelector("#mealFoodSearch").value.trim();
   const grams = numberValue(document.querySelector("#mealFoodGrams").value);
@@ -217,6 +232,65 @@ function addFoodToMealDraft() {
   document.querySelector("#mealFoodSearch").value = "";
   document.querySelector("#mealFoodGrams").value = "";
   renderMealDraft();
+}
+
+function renderFluidForm() {
+  document.querySelector("#blockTitle").textContent = "Væske";
+  document.querySelector("#blockHint").textContent = "Velg drikke og ml. Karbo og kalorier regnes ut hvis drikken finnes i listen.";
+  document.querySelector("#blockFields").innerHTML = `
+    <div class="meal-picker">
+      <div class="meal-row">
+        <input id="fluidSearch" type="search" placeholder="Søk vann, Fanta, melk..." list="fluidOptions" />
+        <input id="fluidMlInput" type="number" min="0" step="10" placeholder="ml" />
+        <button id="addFluidButton" class="secondary-button" type="button">Legg til</button>
+      </div>
+      <datalist id="fluidOptions">${state.foods.map((food) => `<option value="${escapeHtml(food.name)}"></option>`).join("")}</datalist>
+      <div id="selectedFluids" class="item-list"></div>
+    </div>
+  `;
+
+  document.querySelector("#addFluidButton").addEventListener("click", addFluidToDraft);
+  renderFluidDraft();
+}
+
+function addFluidToDraft() {
+  const name = document.querySelector("#fluidSearch").value.trim();
+  const ml = numberValue(document.querySelector("#fluidMlInput").value);
+  const food = state.foods.find((item) => item.name.toLowerCase() === name.toLowerCase());
+  if (!food || ml <= 0) return;
+  fluidDraft.push({ foodId: food.id, foodName: food.name, ml, grams: ml });
+  document.querySelector("#fluidSearch").value = "";
+  document.querySelector("#fluidMlInput").value = "";
+  renderFluidDraft();
+}
+
+function renderFluidDraft() {
+  const target = document.querySelector("#selectedFluids");
+  if (!target) return;
+  target.innerHTML = fluidDraft
+    .map((item, index) => {
+      const macros = calculateFoodMacros(item);
+      return `
+        <article class="item">
+          <div>
+            <h3>${escapeHtml(item.foodName)} · ${item.ml} ml</h3>
+            <p class="meta">
+              <span>${Math.round(macros.kcal)} kcal</span>
+              <span>${macros.carbs.toFixed(1)} g karbo</span>
+            </p>
+          </div>
+          <button class="danger-button" type="button" data-fluid-index="${index}">Fjern</button>
+        </article>
+      `;
+    })
+    .join("");
+
+  target.querySelectorAll("[data-fluid-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      fluidDraft.splice(Number(button.dataset.fluidIndex), 1);
+      renderFluidDraft();
+    });
+  });
 }
 
 function renderMealDraft() {
@@ -292,6 +366,17 @@ function createBlock(event) {
       if (food) food.lastUsedAt = new Date().toISOString();
     });
     mealDraft = [];
+  } else if (activeBlockType === "fluid") {
+    payload.items = fluidDraft;
+    payload.fluidMl = fluidDraft.reduce((sum, item) => sum + item.ml, 0);
+    payload.totals = sumMacros(fluidDraft);
+    payload.carbs = payload.totals.carbs;
+    payload.kcal = payload.totals.kcal;
+    fluidDraft.forEach((item) => {
+      const food = state.foods.find((foodItem) => foodItem.id === item.foodId);
+      if (food) food.lastUsedAt = new Date().toISOString();
+    });
+    fluidDraft = [];
   } else {
     for (const [key, value] of data.entries()) {
       payload[key] = key === "note" ? String(value) : numberValue(value);
@@ -377,6 +462,7 @@ function buildEntryFromBlocks(date, blocks) {
     if (block.blockType === "fluid") {
       entry.fluidMl += payload.fluidMl || 0;
       entry.carbs += payload.carbs || 0;
+      entry.kcal += payload.kcal || 0;
     }
 
     if (block.blockType === "meal") {
@@ -427,6 +513,10 @@ function summarizePayload(block) {
   if (block.blockType === "meal") {
     const totals = block.payload.totals || {};
     return `<span>${block.payload.mealType}</span><span>${Math.round(totals.kcal || 0)} kcal</span><span>${(totals.carbs || 0).toFixed(1)} g karbo</span>`;
+  }
+  if (block.blockType === "fluid") {
+    const totals = block.payload.totals || {};
+    return `<span>${block.payload.fluidMl || 0} ml</span><span>${Math.round(totals.kcal || 0)} kcal</span><span>${(totals.carbs || 0).toFixed(1)} g karbo</span>`;
   }
   return Object.entries(block.payload)
     .filter(([, value]) => value !== "" && value !== 0)
@@ -685,6 +775,7 @@ function init() {
     button.addEventListener("click", () => {
       activeBlockType = button.dataset.block;
       mealDraft = [];
+      fluidDraft = [];
       renderBlockForm();
     });
   });
