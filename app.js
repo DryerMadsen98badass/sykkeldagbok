@@ -84,15 +84,16 @@ const blockDefinitions = {
   },
   sleep: {
     title: "Søvn",
-    hint: "Søvn og kvalitet.",
+    hint: "Når du la deg og sto opp.",
     fields: [
-      ["sleepHours", "Søvntimer", "number", 0, 16],
+      ["sleepBedtime", "Lå meg (HH:MM)", "time"],
+      ["sleepWakeTime", "Sto opp (HH:MM)", "time"],
       ["sleepQuality", "Søvnkvalitet 1-10", "number", 1, 10],
     ],
   },
   fluid: {
     title: "Væske",
-    hint: "Registrer milliliter.",
+    hint: "Registrer milliliter og når du drakk.",
     fields: [
       ["fluidMl", "Væske ml", "number", 0, 10000],
       ["carbs", "Karbo i drikke gram", "number", 0, 500],
@@ -100,8 +101,9 @@ const blockDefinitions = {
   },
   ride: {
     title: "Sykkel",
-    hint: "Trening eller ritt.",
+    hint: "Registrer type, varighet og intensitet.",
     fields: [
+      ["rideType", "Type", "select", ["Ritt", "Trening", "Ingen sykling"]],
       ["rideMinutes", "Varighet minutter", "number", 0, 1000],
       ["distanceKm", "Distanse km", "number", 0, 1000],
       ["intensity", "Intensitet 1-10", "number", 1, 10],
@@ -172,6 +174,13 @@ function fieldHtml([name, label, type, min, max]) {
   if (type === "textarea") {
     return `<label>${label}<textarea name="${name}" rows="4"></textarea></label>`;
   }
+  if (type === "time") {
+    return `<label>${label}<input name="${name}" type="time" /></label>`;
+  }
+  if (type === "select" && Array.isArray(min)) {
+    const options = min.map(opt => `<option>${opt}</option>`).join("");
+    return `<label>${label}<select name="${name}">${options}</select></label>`;
+  }
   return `<label>${label}<input name="${name}" type="${type}" min="${min ?? ""}" max="${max ?? ""}" step="0.1" /></label>`;
 }
 
@@ -195,7 +204,7 @@ function renderBlockForm() {
 
 function renderMealForm() {
   document.querySelector("#blockTitle").textContent = "Måltid";
-  document.querySelector("#blockHint").textContent = "Velg matvarer og gram. Makroer regnes ut automatisk.";
+  document.querySelector("#blockHint").textContent = "Velg matvarer, gram og når du spiste. Makroer regnes ut automatisk.";
   document.querySelector("#blockFields").innerHTML = `
     <label>Måltidstype
       <select name="mealType">
@@ -204,6 +213,11 @@ function renderMealForm() {
         <option>Middag</option>
         <option>Kveldsmat</option>
         <option>Snack</option>
+      </select>
+    </label>
+    <label>I forbindelse med trening?
+      <select name="mealContext">
+        <option>Vanlig måltid</option>
         <option>Før økt</option>
         <option>Under økt</option>
         <option>Etter økt</option>
@@ -236,8 +250,16 @@ function addFoodToMealDraft() {
 
 function renderFluidForm() {
   document.querySelector("#blockTitle").textContent = "Væske";
-  document.querySelector("#blockHint").textContent = "Velg drikke og ml. Karbo og kalorier regnes ut hvis drikken finnes i listen.";
+  document.querySelector("#blockHint").textContent = "Velg drikke, ml og når du drakk. Karbo og kalorier regnes ut hvis drikken finnes i listen.";
   document.querySelector("#blockFields").innerHTML = `
+    <label>I forbindelse med trening?
+      <select name="fluidContext">
+        <option>Vanlig</option>
+        <option>Før økt</option>
+        <option>Under økt</option>
+        <option>Etter økt</option>
+      </select>
+    </label>
     <div class="meal-picker">
       <div class="meal-row">
         <input id="fluidSearch" type="search" placeholder="Søk vann, Fanta, melk..." list="fluidOptions" />
@@ -359,6 +381,7 @@ function createBlock(event) {
 
   if (activeBlockType === "meal") {
     payload.mealType = data.get("mealType");
+    payload.mealContext = data.get("mealContext");
     payload.items = mealDraft;
     payload.totals = sumMacros(mealDraft);
     mealDraft.forEach((item) => {
@@ -367,6 +390,7 @@ function createBlock(event) {
     });
     mealDraft = [];
   } else if (activeBlockType === "fluid") {
+    payload.fluidContext = data.get("fluidContext");
     payload.items = fluidDraft;
     payload.fluidMl = fluidDraft.reduce((sum, item) => sum + item.ml, 0);
     payload.totals = sumMacros(fluidDraft);
@@ -434,9 +458,11 @@ function buildEntryFromBlocks(date, blocks) {
     recovery: 0,
     weightKg: 0,
     soreness: 0,
-    sleepHours: 0,
+    sleepBedtime: "",
+    sleepWakeTime: "",
     sleepQuality: 0,
     fluidMl: 0,
+    rideType: "",
     rideMinutes: 0,
     distanceKm: 0,
     intensity: 0,
@@ -455,6 +481,9 @@ function buildEntryFromBlocks(date, blocks) {
     const payload = block.payload;
     Object.keys(entry).forEach((key) => {
       if (typeof entry[key] === "number" && typeof payload[key] === "number") {
+        entry[key] = payload[key];
+      }
+      if (typeof entry[key] === "string" && typeof payload[key] === "string" && payload[key]) {
         entry[key] = payload[key];
       }
     });
@@ -512,11 +541,19 @@ function renderBlockItem(block) {
 function summarizePayload(block) {
   if (block.blockType === "meal") {
     const totals = block.payload.totals || {};
-    return `<span>${block.payload.mealType}</span><span>${Math.round(totals.kcal || 0)} kcal</span><span>${(totals.carbs || 0).toFixed(1)} g karbo</span>`;
+    const context = block.payload.mealContext ? ` (${block.payload.mealContext})` : "";
+    return `<span>${block.payload.mealType}${context}</span><span>${Math.round(totals.kcal || 0)} kcal</span><span>${(totals.carbs || 0).toFixed(1)} g karbo</span>`;
   }
   if (block.blockType === "fluid") {
     const totals = block.payload.totals || {};
-    return `<span>${block.payload.fluidMl || 0} ml</span><span>${Math.round(totals.kcal || 0)} kcal</span><span>${(totals.carbs || 0).toFixed(1)} g karbo</span>`;
+    const context = block.payload.fluidContext ? ` (${block.payload.fluidContext})` : "";
+    return `<span>${block.payload.fluidMl || 0} ml${context}</span><span>${Math.round(totals.kcal || 0)} kcal</span><span>${(totals.carbs || 0).toFixed(1)} g karbo</span>`;
+  }
+  if (block.blockType === "sleep") {
+    return `<span>${block.payload.sleepBedtime || "-"} til ${block.payload.sleepWakeTime || "-"}</span><span>Kvalitet: ${block.payload.sleepQuality || "-"}</span>`;
+  }
+  if (block.blockType === "ride") {
+    return `<span>${block.payload.rideType || "-"}</span><span>${block.payload.rideMinutes || 0} min</span><span>${block.payload.distanceKm || 0} km</span><span>Intensitet: ${block.payload.intensity || "-"}</span>`;
   }
   return Object.entries(block.payload)
     .filter(([, value]) => value !== "" && value !== 0)
@@ -626,6 +663,7 @@ function renderEntry(entry) {
           <span>${entry.carbs.toFixed(1)} g karbo</span>
           <span>${entry.weightKg || "-"} kg</span>
           <span>${entry.feeling || "-"} følelse</span>
+          <span>${entry.rideType || "-"}</span>
           <span>${entry.exportedAt ? "eksportert" : "ikke eksportert"}</span>
         </p>
       </div>
