@@ -84,7 +84,7 @@ const blockDefinitions = {
   },
   sleep: {
     title: "Søvn",
-    hint: "Når du la deg og sto opp.",
+    hint: "Når du la deg og sto opp. Søvntimer beregnes automatisk.",
     fields: [
       ["sleepBedtime", "Lå meg (HH:MM)", "time"],
       ["sleepWakeTime", "Sto opp (HH:MM)", "time"],
@@ -93,11 +93,8 @@ const blockDefinitions = {
   },
   fluid: {
     title: "Væske",
-    hint: "Registrer milliliter og når du drakk.",
-    fields: [
-      ["fluidMl", "Væske ml", "number", 0, 10000],
-      ["carbs", "Karbo i drikke gram", "number", 0, 500],
-    ],
+    hint: "Velg drikke og ml. Karbo og kalorier regnes ut hvis drikken finnes i listen.",
+    fields: [],
   },
   ride: {
     title: "Sykkel",
@@ -168,6 +165,21 @@ function activeDate() {
 
 function getBlocksForDate(date) {
   return state.blocks.filter((block) => block.entryDate === date && !block.convertedToEntry);
+}
+
+function calculateSleepHours(bedtime, wakeTime) {
+  if (!bedtime || !wakeTime) return 0;
+  const [bedHour, bedMin] = bedtime.split(":").map(Number);
+  const [wakeHour, wakeMin] = wakeTime.split(":").map(Number);
+  let bedMinutes = bedHour * 60 + bedMin;
+  let wakeMinutes = wakeHour * 60 + wakeMin;
+  
+  if (wakeMinutes <= bedMinutes) {
+    wakeMinutes += 24 * 60;
+  }
+  
+  const diffMinutes = wakeMinutes - bedMinutes;
+  return Math.round((diffMinutes / 60) * 10) / 10;
 }
 
 function fieldHtml([name, label, type, min, max]) {
@@ -401,6 +413,13 @@ function createBlock(event) {
       if (food) food.lastUsedAt = new Date().toISOString();
     });
     fluidDraft = [];
+  } else if (activeBlockType === "sleep") {
+    const bedtime = data.get("sleepBedtime");
+    const wakeTime = data.get("sleepWakeTime");
+    payload.sleepBedtime = bedtime;
+    payload.sleepWakeTime = wakeTime;
+    payload.sleepHours = calculateSleepHours(bedtime, wakeTime);
+    payload.sleepQuality = numberValue(data.get("sleepQuality"));
   } else {
     for (const [key, value] of data.entries()) {
       payload[key] = key === "note" ? String(value) : numberValue(value);
@@ -460,6 +479,7 @@ function buildEntryFromBlocks(date, blocks) {
     soreness: 0,
     sleepBedtime: "",
     sleepWakeTime: "",
+    sleepHours: 0,
     sleepQuality: 0,
     fluidMl: 0,
     rideType: "",
@@ -550,7 +570,7 @@ function summarizePayload(block) {
     return `<span>${block.payload.fluidMl || 0} ml${context}</span><span>${Math.round(totals.kcal || 0)} kcal</span><span>${(totals.carbs || 0).toFixed(1)} g karbo</span>`;
   }
   if (block.blockType === "sleep") {
-    return `<span>${block.payload.sleepBedtime || "-"} til ${block.payload.sleepWakeTime || "-"}</span><span>Kvalitet: ${block.payload.sleepQuality || "-"}</span>`;
+    return `<span>${block.payload.sleepBedtime || "-"} til ${block.payload.sleepWakeTime || "-"}</span><span>${block.payload.sleepHours} timer</span><span>Kvalitet: ${block.payload.sleepQuality || "-"}</span>`;
   }
   if (block.blockType === "ride") {
     return `<span>${block.payload.rideType || "-"}</span><span>${block.payload.rideMinutes || 0} min</span><span>${block.payload.distanceKm || 0} km</span><span>Intensitet: ${block.payload.intensity || "-"}</span>`;
@@ -663,6 +683,7 @@ function renderEntry(entry) {
           <span>${entry.carbs.toFixed(1)} g karbo</span>
           <span>${entry.weightKg || "-"} kg</span>
           <span>${entry.feeling || "-"} følelse</span>
+          <span>${entry.sleepHours || "-"} t søvn</span>
           <span>${entry.rideType || "-"}</span>
           <span>${entry.exportedAt ? "eksportert" : "ikke eksportert"}</span>
         </p>
