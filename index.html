@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#173b2f" />
+    <title>Sykkeldagbok</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Privat sykkellogg</p>
+        <h1>Sykkeldagbok</h1>
+      </div>
+      <button id="installButton" class="ghost-button" hidden>Installer</button>
+    </header>
+
+    <main class="shell">
+      <section class="dashboard">
+        <div>
+          <h2>Dagens innsamling</h2>
+          <p>Legg inn blokker gjennom dagen. Når dagen er ferdig, lagres alt som én registrering.</p>
+        </div>
+        <div class="stat-grid">
+          <article>
+            <strong id="dayCount">0</strong>
+            <span>dager</span>
+          </article>
+          <article>
+            <strong id="pendingCount">0</strong>
+            <span>ikke eksportert</span>
+          </article>
+          <article>
+            <strong id="storageUse">0 KB</strong>
+            <span>lagret på enhet</span>
+          </article>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="Hovedmeny">
+        <button class="tab active" data-view="collectView">Blokker</button>
+        <button class="tab" data-view="foodsView">Matvarer</button>
+        <button class="tab" data-view="historyView">Historikk</button>
+        <button class="tab" data-view="graphsView">Grafer</button>
+        <button class="tab" data-view="transferView">Eksport</button>
+      </nav>
+
+      <section id="collectView" class="view active-view">
+        <div class="panel">
+          <div class="section-title">
+            <h2>Legg til blokk</h2>
+            <input id="activeDate" type="date" />
+          </div>
+
+          <div class="block-buttons">
+            <button data-block="feeling">Følelse</button>
+            <button data-block="body">Kropp</button>
+            <button data-block="sleep">Søvn</button>
+            <button data-block="meal">Måltid</button>
+            <button data-block="fluid">Væske</button>
+            <button data-block="ride">Sykkel</button>
+            <button data-block="note">Notat</button>
+          </div>
+        </div>
+
+        <form id="blockForm" class="panel">
+          <div class="section-title">
+            <h2 id="blockTitle">Følelse</h2>
+            <span id="blockHint">Tallene brukes i grafer.</span>
+          </div>
+          <div id="blockFields"></div>
+          <button class="primary-button" type="submit">Lagre blokk</button>
+        </form>
+
+        <section class="panel">
+          <div class="section-title">
+            <h2>Dagens blokker</h2>
+            <button id="finalizeDayButton" class="secondary-button">Lagre dag</button>
+          </div>
+          <div id="todayBlocks" class="item-list"></div>
+        </section>
+      </section>
+
+      <section id="foodsView" class="view">
+        <div class="panel">
+          <div class="section-title">
+            <h2>Matvareliste</h2>
+            <button id="newFoodButton" class="secondary-button">Ny matvare</button>
+          </div>
+          <input id="foodSearch" type="search" placeholder="Søk etter egg, ris, ketchup..." />
+          <div id="foodsList" class="food-list"></div>
+        </div>
+
+        <form id="foodForm" class="panel" hidden>
+          <div class="section-title">
+            <h2 id="foodFormTitle">Ny matvare</h2>
+            <button id="cancelFoodButton" class="ghost-light" type="button">Avbryt</button>
+          </div>
+          <input id="foodId" type="hidden" />
+          <div class="field-grid">
+            <label>Navn<input id="foodName" required /></label>
+            <label>Kalorier per 100 g<input id="foodKcal" type="number" min="0" step="0.1" required /></label>
+            <label>Karbo per 100 g<input id="foodCarbs" type="number" min="0" step="0.1" required /></label>
+            <label>Protein per 100 g<input id="foodProtein" type="number" min="0" step="0.1" required /></label>
+            <label>Fett per 100 g<input id="foodFat" type="number" min="0" step="0.1" required /></label>
+            <label>Salt per 100 g<input id="foodSalt" type="number" min="0" step="0.01" /></label>
+          </div>
+          <button class="primary-button" type="submit">Lagre matvare</button>
+        </form>
+      </section>
+
+      <section id="historyView" class="view">
+        <div class="panel">
+          <div class="section-title">
+            <h2>Lagrede dager</h2>
+            <button id="importButton" class="secondary-button">Importer fil</button>
+          </div>
+          <input id="importFile" type="file" accept="application/json,.json" hidden />
+          <div id="entriesList" class="item-list"></div>
+        </div>
+      </section>
+
+      <section id="graphsView" class="view">
+        <div class="panel">
+          <div class="section-title">
+            <h2>Utvikling</h2>
+            <select id="graphMetric">
+              <option value="weightKg">Vekt</option>
+              <option value="fluidMl">Væske</option>
+              <option value="kcal">Kalorier</option>
+              <option value="carbs">Karbohydrater</option>
+              <option value="protein">Protein</option>
+              <option value="fat">Fett</option>
+              <option value="feeling">Dagsfølelse</option>
+              <option value="recovery">Restitusjon</option>
+              <option value="sleepHours">Søvn</option>
+              <option value="rideMinutes">Treningstid</option>
+            </select>
+          </div>
+          <svg id="chart" viewBox="0 0 680 260" role="img" aria-label="Graf"></svg>
+          <p id="chartEmpty" class="empty">Legg inn og lagre dager for å se graf.</p>
+        </div>
+      </section>
+
+      <section id="transferView" class="view">
+        <div class="panel">
+          <h2>Eksport til PC</h2>
+          <p class="muted">Eksportfilen inneholder dager, blokker, egne matvarer, favoritter og metadata. Send filen til PC-en med Gmail, kabel eller annen filoverføring.</p>
+          <div class="action-stack">
+            <button id="exportButton" class="primary-button">Eksporter JSON-fil</button>
+            <button id="resetPhoneButton" class="danger-button">Slett eksporterte dager fra telefon</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

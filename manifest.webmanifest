@@ -1,0 +1,9 @@
+{
+  "name": "Sykkeldagbok",
+  "short_name": "Sykling",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f5f0",
+  "theme_color": "#173b2f",
+  "description": "Privat sykkeldagbok med blokker, matvarer, makroer, grafer og eksport."
+}
